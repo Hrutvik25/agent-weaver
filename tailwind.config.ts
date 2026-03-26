@@ -47,6 +47,17 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        aep: {
+          red: "hsl(var(--aep-red))",
+          "red-dim": "hsl(var(--aep-red-dim))",
+          orange: "hsl(var(--aep-orange))",
+          gold: "hsl(var(--aep-gold))",
+          ink: "hsl(var(--aep-ink))",
+          surface: "hsl(var(--aep-surface))",
+          panel: "hsl(var(--aep-panel))",
+          success: "hsl(var(--aep-success))",
+          cyan: "hsl(var(--aep-cyan))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
