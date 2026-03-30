@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AEP Agent Orchestrator — Autonomous Marketing Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #FF2D20;
+    --red-dim: #cc1a10;
+    --orange: #FF6B35;
+    --gold: #E8A838;
+    --ink: #0A0A0F;
+    --surface: #111118;
+    --panel: #17171F;
+    --border: rgba(255,255,255,0.07);
+    --text: #E8E6E1;
+    --muted: #6B6B7A;
+    --success: #2ECC8C;
+    --cyan: #00D4FF;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--ink);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ——— NOISE OVERLAY ——— */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+
+  /* ——— GRID BACKGROUND ——— */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(255,45,32,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,45,32,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+
+  .app { position: relative; z-index: 1; }
+
+  /* ——— HEADER ——— */
+  header {
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10,10,15,0.8);
+    backdrop-filter: blur(20px);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .logo-mark {
+    width: 36px; height: 36px;
+    background: var(--red);
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+    animation: pulse-logo 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse-logo {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  .logo-text {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+
+  .logo-text span { color: var(--red); }
+
+  .status-bar {
+    display: flex; align-items: center; gap: 24px;
+    font-size: 11px; color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success);
+    display: inline-block; margin-right: 6px;
+    animation: blink 2s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ——— HERO ——— */
+  .hero {
+    padding: 80px 40px 60px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .hero-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 20px;
+  }
+
+  .hero-title {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(40px, 5vw, 72px);
+    font-weight: 600;
+    line-height: 1.05;
+    color: var(--text);
+    max-width: 760px;
+    margin-bottom: 24px;
+  }
+
+  .hero-title em {
+    font-style: italic;
+    color: var(--gold);
+  }
+
+  .hero-sub {
+    font-size: 13px;
+    color: var(--muted);
+    max-width: 540px;
+    line-height: 1.8;
+    margin-bottom: 40px;
+  }
+
+  /* ——— ORCHESTRATOR CANVAS ——— */
+  .orchestrator {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 40px 80px;
+  }
+
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ——— PIPELINE ——— */
+  .pipeline {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+    align-items: start;
+    gap: 0;
+    margin-bottom: 48px;
+  }
+
+  .pipe-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 40px;
+    color: var(--red);
+    font-size: 20px;
+    opacity: 0.5;
+  }
+
+  .agent-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 24px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .agent-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--red);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.4s ease;
+  }
+
+  .agent-card:hover::before,
+  .agent-card.active::before {
+    transform: scaleX(1);
+  }
+
+  .agent-card:hover,
+  .agent-card.active {
+    border-color: rgba(255,45,32,0.3);
+    background: #1C1C25;
+    transform: translateY(-2px);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,45,32,0.1);
+  }
+
+  .agent-card.running {
+    animation: agent-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes agent-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,45,32,0.2); }
+    50% { box-shadow: 0 0 0 12px rgba(255,45,32,0); }
+  }
+
+  .agent-icon {
+    font-size: 24px;
+    margin-bottom: 14px;
+  }
+
+  .agent-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .agent-desc {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 14px;
+  }
+
+  .agent-status {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 1px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .agent-status.idle { color: var(--muted); border: 1px solid rgba(107,107,122,0.3); }
+  .agent-status.running { color: var(--gold); border: 1px solid rgba(232,168,56,0.3); background: rgba(232,168,56,0.08); }
+  .agent-status.done { color: var(--success); border: 1px solid rgba(46,204,140,0.3); background: rgba(46,204,140,0.08); }
+
+  .agent-metrics {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .metric {
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .metric-value {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    display: block;
+  }
+
+  .metric-value.red { color: var(--red); }
+  .metric-value.gold { color: var(--gold); }
+  .metric-value.green { color: var(--success); }
+  .metric-value.cyan { color: var(--cyan); }
+
+  /* ——— BOTTOM PANELS ——— */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 48px;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 24px;
+  }
+
+  .panel-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-title-accent { color: var(--red); }
+
+  /* ——— LOG TERMINAL ——— */
+  .log-terminal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    margin-bottom: 48px;
+  }
+
+  .terminal-bar {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .terminal-dots {
+    display: flex; gap: 6px;
+  }
+
+  .terminal-dots span {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+
+  .t-red { background: #FF5F57; }
+  .t-yellow { background: #FEBC2E; }
+  .t-green { background: #28C840; }
+
+  .terminal-body {
+    padding: 20px;
+    height: 220px;
+    overflow-y: auto;
+    font-size: 12px;
+    line-height: 2;
+  }
+
+  .terminal-body::-webkit-scrollbar { width: 4px; }
+  .terminal-body::-webkit-scrollbar-track { background: transparent; }
+  .terminal-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .log-line {
+    display: flex;
+    gap: 12px;
+    opacity: 0;
+    animation: log-appear 0.3s ease forwards;
+  }
+
+  @keyframes log-appear {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .log-time { color: var(--muted); min-width: 80px; }
+  .log-tag {
+    min-width: 120px;
+    font-weight: 500;
+  }
+
+  .log-tag.orchestrator { color: var(--red); }
+  .log-tag.audience { color: var(--gold); }
+  .log-tag.content { color: var(--cyan); }
+  .log-tag.analytics { color: var(--success); }
+  .log-tag.journey { color: var(--orange); }
+  .log-tag.system { color: var(--muted); }
+
+  .log-msg { color: var(--text); }
+
+  /* ——— ANALYTICS PANEL ——— */
+  .chart-bar-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .chart-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+  }
+
+  .chart-label {
+    width: 100px;
+    color: var(--muted);
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .chart-bar-wrap {
+    flex: 1;
+    height: 20px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+
+  .chart-bar-fill {
+    height: 100%;
+    border-radius: 1px;
+    transition: width 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    width: 0;
+  }
+
+  .chart-bar-fill.red { background: linear-gradient(90deg, var(--red-dim), var(--red)); }
+  .chart-bar-fill.gold { background: linear-gradient(90deg, #b8831a, var(--gold)); }
+  .chart-bar-fill.cyan { background: linear-gradient(90deg, #009dbf, var(--cyan)); }
+  .chart-bar-fill.green { background: linear-gradient(90deg, #1e9a6a, var(--success)); }
+
+  .chart-value {
+    width: 40px;
+    color: var(--text);
+    font-size: 12px;
+    text-align: right;
+  }
+
+  /* ——— SEGMENTS ——— */
+  .segment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .segment-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 1px;
+    font-size: 11px;
+    transition: all 0.2s;
+    cursor: default;
+  }
+
+  .segment-item:hover {
+    border-color: rgba(255,45,32,0.2);
+    background: rgba(255,45,32,0.04);
+  }
+
+  .segment-name { color: var(--text); }
+  .segment-size {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--gold);
+  }
+
+  .segment-tag {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 2px 6px;
+    border-radius: 1px;
+    background: rgba(46,204,140,0.1);
+    color: var(--success);
+    border: 1px solid rgba(46,204,140,0.2);
+  }
+
+  /* ——— CONTENT QUEUE ——— */
+  .content-queue {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .content-item {
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 1px;
+    font-size: 11px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    transition: all 0.2s;
+  }
+
+  .content-item:hover { border-color: rgba(0,212,255,0.2); }
+
+  .content-type {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--cyan);
+    min-width: 60px;
+    padding-top: 1px;
+  }
+
+  .content-title { color: var(--text); line-height: 1.5; }
+
+  .content-badge {
+    margin-left: auto;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 7px;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+
+  .badge-published { color: var(--success); background: rgba(46,204,140,0.1); border: 1px solid rgba(46,204,140,0.2); }
+  .badge-pending { color: var(--gold); background: rgba(232,168,56,0.1); border: 1px solid rgba(232,168,56,0.2); }
+  .badge-draft { color: var(--muted); background: rgba(107,107,122,0.1); border: 1px solid rgba(107,107,122,0.2); }
+
+  /* ——— RUN BUTTON ——— */
+  .run-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 48px;
+  }
+
+  .btn-run {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 14px 32px;
+    background: var(--red);
+    color: white;
+    border: none;
+    border-radius: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-run::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s;
+  }
+
+  .btn-run:hover::before { transform: translateX(100%); }
+  .btn-run:hover { background: #e01a0d; }
+  .btn-run:active { transform: scale(0.98); }
+  .btn-run:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-secondary {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 14px 24px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-secondary:hover {
+    border-color: rgba(255,255,255,0.2);
+    color: var(--text);
+  }
+
+  .run-info {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ——— MINI CHART ——— */
+  .sparkline-container {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 48px;
+    margin-top: 12px;
+  }
+
+  .sparkline-bar {
+    flex: 1;
+    background: var(--red);
+    border-radius: 1px 1px 0 0;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    min-height: 4px;
+  }
+
+  .sparkline-bar:hover { opacity: 1; }
+
+  /* ——— CONTEXT TAG AREA ——— */
+  .tag-area {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .tag {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 1px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: default;
+    transition: all 0.2s;
+  }
+
+  .tag:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+  .tag.active-tag { color: var(--red); border-color: rgba(255,45,32,0.3); background: rgba(255,45,32,0.06); }
+
+  /* ——— FOOTER ——— */
+  .footer {
+    border-top: 1px solid var(--border);
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  /* ——— PROGRESS INDICATOR ——— */
+  .progress-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 40px;
+    padding: 16px 24px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+  }
+
+  .progress-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    position: relative;
+  }
+
+  .progress-step::after {
+    content: '—';
+    margin-left: 12px;
+    opacity: 0.3;
+  }
+
+  .progress-step:last-child::after { display: none; }
+
+  .progress-step.done { color: var(--success); }
+  .progress-step.active { color: var(--gold); }
+
+  .step-num {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    border: 1px solid currentColor;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+  }
+
+  .progress-step.done .step-num {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
+  }
+
+  /* ——— ANALYTICS STREAM ——— */
+  .stream-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .stream-items::-webkit-scrollbar { width: 3px; }
+  .stream-items::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .stream-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    animation: stream-in 0.3s ease;
+  }
+
+  @keyframes stream-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .stream-event {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  .event-click { background: var(--red); }
+  .event-view { background: var(--gold); }
+  .event-convert { background: var(--success); }
+  .event-exit { background: var(--muted); }
+
+  .stream-user { color: var(--cyan); width: 90px; flex-shrink: 0; }
+  .stream-action { color: var(--text); flex: 1; }
+  .stream-time { color: var(--muted); font-size: 10px; }
+
+  /* Scrollbar styles */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ——— HEADER ——— -->
+  <header>
+    <div class="logo">
+      <div class="logo-mark"></div>
+      <div class="logo-text">Adobe <span>AEP</span> Agent Orchestrator</div>
+    </div>
+    <div class="status-bar">
+      <span><span class="status-dot"></span>All Agents Operational</span>
+      <span>Env: Production</span>
+      <span id="live-time"></span>
+    </div>
+  </header>
+
+  <div class="app">
+    <!-- ——— HERO ——— -->
+    <section class="hero">
+      <p class="hero-eyebrow">Adobe Experience Platform · Autonomous Marketing Intelligence</p>
+      <h1 class="hero-title">
+        From intelligent assistance<br>to <em>agentic autonomy</em>
+      </h1>
+      <p class="hero-sub">
+        A sample implementation of the AEP Agent Orchestrator — coordinating Audience, Content, Journey, and Analytics agents to automate context creation, tagging, publishing, and behavioral tracking across the full marketing lifecycle.
+      </p>
+    </section>
+
+    <!-- ——— ORCHESTRATOR ——— -->
+    <section class="orchestrator">
+
+      <!-- Run Controls -->
+      <div class="run-controls">
+        <button class="btn-run" id="runBtn" onclick="runOrchestration()">
+          ▶ Run Orchestration
+        </button>
+        <button class="btn-secondary" onclick="resetAll()">Reset</button>
+        <span class="run-info" id="runInfo">Click to trigger the full autonomous agent pipeline</span>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-header">
+        <div class="progress-step" id="step1">
+          <div class="step-num">1</div> Data Ingestion
+        </div>
+        <div class="progress-step" id="step2">
+          <div class="step-num">2</div> Audience Segment
+        </div>
+        <div class="progress-step" id="step3">
+          <div class="step-num">3</div> Content Generation
+        </div>
+        <div class="progress-step" id="step4">
+          <div class="step-num">4</div> Tag & Publish
+        </div>
+        <div class="progress-step" id="step5">
+          <div class="step-num">5</div> Journey Activate
+        </div>
+        <div class="progress-step" id="step6">
+          <div class="step-num">6</div> Analytics Collect
+        </div>
+      </div>
+
+      <!-- Agent Pipeline -->
+      <p class="section-label">Agent Pipeline</p>
+      <div class="pipeline">
+
+        <!-- Audience Agent -->
+        <div class="agent-card" id="card-audience">
+          <div class="agent-icon">👥</div>
+          <div class="agent-name">Audience Agent</div>
+          <div class="agent-desc">Creates and optimizes audience segments using real-time CDP data and behavioral signals.</div>
+          <div class="agent-status idle" id="status-audience">
+            <span>●</span> Idle
+          </div>
+          <div class="agent-metrics">
+            <div class="metric">
+              <span class="metric-value red" id="m-segments">—</span>
+              Segments
+            </div>
+            <div class="metric">
+              <span class="metric-value gold" id="m-profiles">—</span>
+              Profiles
+            </div>
+          </div>
+        </div>
+
+        <div class="pipe-arrow">→</div>
+
+        <!-- Content Agent -->
+        <div class="agent-card" id="card-content">
+          <div class="agent-icon">✍️</div>
+          <div class="agent-name">Content Production Agent</div>
+          <div class="agent-desc">Assembles and personalizes campaign assets at scale using generative AI and brand guidelines.</div>
+          <div class="agent-status idle" id="status-content">
+            <span>●</span> Idle
+          </div>
+          <div class="agent-metrics">
+            <div class="metric">
+              <span class="metric-value cyan" id="m-assets">—</span>
+              Assets
+            </div>
+            <div class="metric">
+              <span class="metric-value gold" id="m-variants">—</span>
+              Variants
+            </div>
+          </div>
+        </div>
+
+        <div class="pipe-arrow">→</div>
+
+        <!-- Experimentation Agent -->
+        <div class="agent-card" id="card-experiment">
+          <div class="agent-icon">🧪</div>
+          <div class="agent-name">Experimentation Agent</div>
+          <div class="agent-desc">Hypothesizes, simulates, and optimizes A/B tests. Auto-publishes winning variants.</div>
+          <div class="agent-status idle" id="status-experiment">
+            <span>●</span> Idle
+          </div>
+          <div class="agent-metrics">
+            <div class="metric">
+              <span class="metric-value red" id="m-tests">—</span>
+              Tests
+            </div>
+            <div class="metric">
+              <span class="metric-value green" id="m-confidence">—</span>
+              Confidence
+            </div>
+          </div>
+        </div>
+
+        <div class="pipe-arrow">→</div>
+
+        <!-- Journey Agent -->
+        <div class="agent-card" id="card-journey">
+          <div class="agent-icon">🗺️</div>
+          <div class="agent-name">Journey Agent</div>
+          <div class="agent-desc">Orchestrates cross-channel experiences. Adapts touchpoints in real-time to customer context.</div>
+          <div class="agent-status idle" id="status-journey">
+            <span>●</span> Idle
+          </div>
+          <div class="agent-metrics">
+            <div class="metric">
+              <span class="metric-value gold" id="m-journeys">—</span>
+              Journeys
+            </div>
+            <div class="metric">
+              <span class="metric-value cyan" id="m-channels">—</span>
+              Channels
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Panels -->
+      <p class="section-label">Live Intelligence</p>
+      <div class="bottom-grid">
+
+        <!-- Segments Panel -->
+        <div class="panel">
+          <div class="panel-title">
+            Audience Segments <span class="panel-title-accent" id="seg-count">—</span>
+          </div>
+          <div class="segment-list" id="segment-list">
+            <div style="color: var(--muted); font-size: 11px; padding: 20px 0; text-align: center;">
+              Awaiting Audience Agent...
+            </div>
+          </div>
+        </div>
+
+        <!-- Content Queue Panel -->
+        <div class="panel">
+          <div class="panel-title">
+            Content Queue <span class="panel-title-accent" id="content-count">—</span>
+          </div>
+          <div class="content-queue" id="content-queue">
+            <div style="color: var(--muted); font-size: 11px; padding: 20px 0; text-align: center;">
+              Awaiting Content Agent...
+            </div>
+          </div>
+          <div class="tag-area" id="tag-area" style="margin-top: 16px;"></div>
+        </div>
+
+        <!-- Analytics Stream Panel -->
+        <div class="panel">
+          <div class="panel-title">
+            Adobe Analytics · Live Stream <span class="panel-title-accent" id="event-count">0 events</span>
+          </div>
+          <div class="stream-items" id="stream-items">
+            <div style="color: var(--muted); font-size: 11px; padding: 20px 0; text-align: center;">
+              Awaiting journey activation...
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Analytics Bar Chart -->
+      <p class="section-label">Adobe Analytics — Campaign Performance</p>
+      <div class="panel" style="margin-bottom: 48px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+          <div>
+            <div class="panel-title">Channel Engagement Rate</div>
+            <div class="chart-bar-container" id="channel-chart">
+              <div style="color: var(--muted); font-size: 11px;">Initializing analytics...</div>
+            </div>
+          </div>
+          <div>
+            <div class="panel-title">Segment Conversion Rate</div>
+            <div class="chart-bar-container" id="conversion-chart">
+              <div style="color: var(--muted); font-size: 11px;">Initializing analytics...</div>
+            </div>
+            <div style="margin-top: 24px;">
+              <div class="panel-title">Session Activity</div>
+              <div class="sparkline-container" id="sparkline"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal Log -->
+      <p class="section-label">Orchestrator Console</p>
+      <div class="log-terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dots">
+            <span class="t-red"></span>
+            <span class="t-yellow"></span>
+            <span class="t-green"></span>
+          </div>
+          <span>aep-orchestrator · agent-log</span>
+        </div>
+        <div class="terminal-body" id="terminal-body">
+          <div class="log-line" style="opacity:1">
+            <span class="log-time">00:00:00</span>
+            <span class="log-tag system">[SYSTEM]</span>
+            <span class="log-msg">AEP Agent Orchestrator initialized. Agents standby.</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <!-- ——— FOOTER ——— -->
+  <footer class="footer">
+    <span>AEP Agent Orchestrator · Sample Implementation</span>
+    <span>Adobe Experience Platform · AI-Driven Marketing Automation</span>
+    <span>Build v0.9.4-beta</span>
+  </footer>
+
+</div>
+
+<script>
+// ——————————————————————————————————————————————
+//  SAMPLE CODE: AEP Agent Orchestrator
+//  Simulates: Audience → Content → Experimentation → Journey → Analytics
+// ——————————————————————————————————————————————
+
+// === LIVE CLOCK ===
+function updateClock() {
+  document.getElementById('live-time').textContent = new Date().toLocaleTimeString('en-US', {hour12: false});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// === STATE ===
+let running = false;
+let eventCount = 0;
+let analyticsInterval = null;
+let startTime = null;
+
+// === DATA MODELS ===
+const AUDIENCE_SEGMENTS = [
+  { name: 'High-Value Cart Abandoners', size: '124K', tag: 'ML-scored' },
+  { name: 'Re-engagement: 30-day Lapsed', size: '89K', tag: 'Behavioral' },
+  { name: 'New User Cohort — Mobile', size: '56K', tag: 'Demographic' },
+  { name: 'Loyalty Tier Upgrade Ready', size: '41K', tag: 'Predictive' },
+  { name: 'Cross-sell: Premium Services', size: '22K', tag: 'Propensity' },
+];
+
+const CONTENT_ITEMS = [
+  { type: 'Email', title: 'Personalized recovery: abandoned cart — Segment A', badge: 'published' },
+  { type: 'Push', title: 'Re-engagement nudge for 30-day lapsed users', badge: 'published' },
+  { type: 'Display', title: 'High-value loyalty upgrade banner — 3 variants', badge: 'published' },
+  { type: 'SMS', title: 'Flash offer: premium cross-sell with urgency copy', badge: 'pending' },
+  { type: 'Web', title: 'Homepage hero personalization — mobile cohort', badge: 'draft' },
+];
+
+const AUTO_TAGS = [
+  'campaign:Q1-retention', 'locale:en-US', 'channel:omnichannel',
+  'brand-safe:true', 'ab-test:variant-B', 'persona:high-value',
+  'journey:re-engagement', 'model:propensity-v3'
+];
+
+const ANALYTICS_EVENTS = [
+  { event: 'click', user: 'u_4829a', action: 'Clicked email CTA — cart recovery' },
+  { event: 'view', user: 'u_7701c', action: 'Viewed loyalty upgrade banner' },
+  { event: 'convert', user: 'u_3312f', action: 'Completed purchase — cross-sell' },
+  { event: 'click', user: 'u_9955b', action: 'Opened push notification — re-engage' },
+  { event: 'view', user: 'u_1104a', action: 'Viewed homepage hero personalization' },
+  { event: 'convert', user: 'u_6621d', action: 'Upgraded to premium plan' },
+  { event: 'click', user: 'u_8839e', action: 'Clicked SMS offer link' },
+  { event: 'exit', user: 'u_2210b', action: 'Session ended — no conversion' },
+  { event: 'view', user: 'u_5547c', action: 'Viewed email variant B' },
+  { event: 'convert', user: 'u_7783a', action: 'Submitted form — lead capture' },
+];
+
+const CHANNEL_DATA = [
+  { label: 'Email', value: 68, color: 'red' },
+  { label: 'Push Notif.', value: 52, color: 'gold' },
+  { label: 'Display', value: 43, color: 'cyan' },
+  { label: 'SMS', value: 38, color: 'green' },
+  { label: 'Web Pers.', value: 61, color: 'red' },
+];
+
+const CONVERSION_DATA = [
+  { label: 'Cart Recov.', value: 24, color: 'green' },
+  { label: 'Re-engage', value: 17, color: 'gold' },
+  { label: 'Cross-sell', value: 31, color: 'cyan' },
+  { label: 'Loyalty Up.', value: 42, color: 'red' },
+  { label: 'New Mobile', value: 19, color: 'green' },
+];
+
+// === LOGGER ===
+function log(tag, cls, msg) {
+  const body = document.getElementById('terminal-body');
+  const now = startTime ? elapsed() : '00:00:00';
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `
+    <span class="log-time">${now}</span>
+    <span class="log-tag ${cls}">[${tag}]</span>
+    <span class="log-msg">${msg}</span>
+  `;
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+}
+
+function elapsed() {
+  const d = Math.floor((Date.now() - startTime) / 1000);
+  const h = String(Math.floor(d / 3600)).padStart(2, '0');
+  const m = String(Math.floor((d % 3600) / 60)).padStart(2, '0');
+  const s = String(d % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+// === AGENT STATE HELPERS ===
+function setAgentStatus(agent, state) {
+  const el = document.getElementById(`status-${agent}`);
+  const card = document.getElementById(`card-${agent}`);
+  el.className = `agent-status ${state}`;
+  card.className = `agent-card ${state === 'running' ? 'running' : state === 'done' ? 'active' : ''}`;
+
+  const labels = { idle: '● Idle', running: '◉ Running', done: '✓ Complete' };
+  el.innerHTML = `<span></span>${labels[state]}`;
+}
+
+function setStep(num, state) {
+  const el = document.getElementById(`step${num}`);
+  el.className = `progress-step ${state}`;
+  if (state === 'done') {
+    el.querySelector('.step-num').textContent = '✓';
+  }
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// === MAIN ORCHESTRATION ===
+async function runOrchestration() {
+  if (running) return;
+  running = true;
+  startTime = Date.now();
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('runInfo').textContent = 'Orchestration pipeline executing...';
+
+  // ——— PHASE 1: DATA INGESTION ———
+  setStep(1, 'active');
+  log('ORCHESTRATOR', 'orchestrator', 'Initializing AEP Agent Orchestrator v2.4.1');
+  await delay(400);
+  log('ORCHESTRATOR', 'orchestrator', 'Loading Real-Time CDP profiles → 2.4M active profiles');
+  await delay(600);
+  log('SYSTEM', 'system', 'Data lake connection established. Schema: XDM ExperienceEvent v3.2');
+  await delay(400);
+  log('ORCHESTRATOR', 'orchestrator', 'Feature store hydrated. Ingesting behavioral signals...');
+  await delay(500);
+  setStep(1, 'done');
+
+  // ——— PHASE 2: AUDIENCE AGENT ———
+  setStep(2, 'active');
+  setAgentStatus('audience', 'running');
+  await delay(300);
+  log('AUDIENCE', 'audience', 'AudienceAgent activated. Evaluating segment definitions...');
+  await delay(700);
+  log('AUDIENCE', 'audience', 'ML propensity model v3 loaded. Scoring 2.4M profiles...');
+  await delay(800);
+  log('AUDIENCE', 'audience', 'Segmentation complete: 5 high-value segments identified');
+  await delay(400);
+  log('AUDIENCE', 'audience', 'Publishing segments → Adobe Journey Optimizer');
+
+  document.getElementById('m-segments').textContent = '5';
+  document.getElementById('m-profiles').textContent = '332K';
+
+  // Render segments
+  const segList = document.getElementById('segment-list');
+  document.getElementById('seg-count').textContent = '5 active';
+  segList.innerHTML = '';
+  for (let i = 0; i < AUDIENCE_SEGMENTS.length; i++) {
+    await delay(250);
+    const s = AUDIENCE_SEGMENTS[i];
+    const el = document.createElement('div');
+    el.className = 'segment-item';
+    el.innerHTML = `
+      <span class="segment-name">${s.name}</span>
+      <span class="segment-size">${s.size}</span>
+      <span class="segment-tag">${s.tag}</span>
+    `;
+    segList.appendChild(el);
+  }
+
+  setAgentStatus('audience', 'done');
+  setStep(2, 'done');
+  await delay(400);
+
+  // ——— PHASE 3: CONTENT AGENT ———
+  setStep(3, 'active');
+  setAgentStatus('content', 'running');
+  await delay(300);
+  log('CONTENT', 'content', 'ContentProductionAgent activated. Retrieving brand guidelines...');
+  await delay(600);
+  log('CONTENT', 'content', 'Firefly model loaded. Generating personalized copy variants...');
+  await delay(900);
+  log('CONTENT', 'content', '12 content assets generated across 5 segments × 5 channels');
+  await delay(500);
+  log('CONTENT', 'content', 'Auto-tagging with semantic labels and compliance flags...');
+  await delay(400);
+  log('CONTENT', 'content', 'Brand safety check: PASSED. Content approved for publishing.');
+
+  document.getElementById('m-assets').textContent = '12';
+  document.getElementById('m-variants').textContent = '36';
+
+  // Render content queue
+  const queue = document.getElementById('content-queue');
+  document.getElementById('content-count').textContent = '5 items';
+  queue.innerHTML = '';
+  for (let i = 0; i < CONTENT_ITEMS.length; i++) {
+    await delay(280);
+    const c = CONTENT_ITEMS[i];
+    const el = document.createElement('div');
+    el.className = 'content-item';
+    el.innerHTML = `
+      <span class="content-type">${c.type}</span>
+      <span class="content-title">${c.title}</span>
+      <span class="content-badge badge-${c.badge}">${c.badge}</span>
+    `;
+    queue.appendChild(el);
+  }
+
+  // Render auto-tags
+  const tagArea = document.getElementById('tag-area');
+  for (let i = 0; i < AUTO_TAGS.length; i++) {
+    await delay(100);
+    const t = document.createElement('span');
+    t.className = 'tag' + (i % 3 === 0 ? ' active-tag' : '');
+    t.textContent = AUTO_TAGS[i];
+    tagArea.appendChild(t);
+  }
+
+  setAgentStatus('content', 'done');
+  setStep(4, 'done');
+  await delay(300);
+
+  // ——— PHASE 4: EXPERIMENTATION AGENT ———
+  setStep(3, 'done');
+  setAgentStatus('experiment', 'running');
+  log('EXPERIMENT', 'orchestrator', 'ExperimentationAgent activated. Configuring A/B tests...');
+  await delay(700);
+  log('EXPERIMENT', 'orchestrator', 'Hypothesis: Variant B (urgency copy) → +18% CTR vs control');
+  await delay(600);
+  log('EXPERIMENT', 'orchestrator', 'Simulation complete. Statistical power: 94%. Running live.');
+  await delay(500);
+  log('EXPERIMENT', 'orchestrator', 'Variant B winner detected at 95% confidence. Auto-publishing.');
+
+  document.getElementById('m-tests').textContent = '3';
+  document.getElementById('m-confidence').textContent = '95%';
+
+  setAgentStatus('experiment', 'done');
+  await delay(400);
+
+  // ——— PHASE 5: JOURNEY AGENT ———
+  setStep(5, 'active');
+  setAgentStatus('journey', 'running');
+  log('JOURNEY', 'journey', 'JourneyAgent activated. Loading customer journey maps...');
+  await delay(600);
+  log('JOURNEY', 'journey', 'Orchestrating 4 cross-channel journeys for 332K profiles');
+  await delay(800);
+  log('JOURNEY', 'journey', 'Real-time decisioning enabled. Context: session + propensity + intent');
+  await delay(500);
+  log('JOURNEY', 'journey', 'All journeys activated. First touchpoints delivered via AJO.');
+
+  document.getElementById('m-journeys').textContent = '4';
+  document.getElementById('m-channels').textContent = '5';
+
+  setAgentStatus('journey', 'done');
+  setStep(5, 'done');
+  await delay(400);
+
+  // ——— PHASE 6: ANALYTICS ———
+  setStep(6, 'active');
+  log('ANALYTICS', 'analytics', 'Adobe Analytics SDK collecting end-user events...');
+  await delay(400);
+  log('ANALYTICS', 'analytics', 'Real-time event stream active. Processing behavioral signals.');
+  await delay(400);
+
+  // Render charts
+  renderChannelChart();
+  renderConversionChart();
+  renderSparkline();
+
+  // Start analytics stream
+  startAnalyticsStream();
+  setStep(6, 'done');
+
+  await delay(500);
+  log('ORCHESTRATOR', 'orchestrator', '━━ Orchestration complete. All agents reporting nominal. ━━');
+  document.getElementById('runInfo').textContent = '✓ Pipeline complete — analytics stream running live';
+}
+
+// === CHART RENDERERS ===
+function renderChannelChart() {
+  const container = document.getElementById('channel-chart');
+  container.innerHTML = '';
+  CHANNEL_DATA.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'chart-row';
+    row.innerHTML = `
+      <span class="chart-label">${item.label}</span>
+      <div class="chart-bar-wrap">
+        <div class="chart-bar-fill ${item.color}" style="width:0%" data-target="${item.value}%"></div>
+      </div>
+      <span class="chart-value">${item.value}%</span>
+    `;
+    container.appendChild(row);
+    setTimeout(() => {
+      row.querySelector('.chart-bar-fill').style.width = `${item.value}%`;
+    }, 100 + i * 150);
+  });
+}
+
+function renderConversionChart() {
+  const container = document.getElementById('conversion-chart');
+  container.innerHTML = '';
+  CONVERSION_DATA.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'chart-row';
+    row.innerHTML = `
+      <span class="chart-label">${item.label}</span>
+      <div class="chart-bar-wrap">
+        <div class="chart-bar-fill ${item.color}" style="width:0%"></div>
+      </div>
+      <span class="chart-value">${item.value}%</span>
+    `;
+    container.appendChild(row);
+    setTimeout(() => {
+      row.querySelector('.chart-bar-fill').style.width = `${item.value * 2.5}%`;
+    }, 150 + i * 150);
+  });
+}
+
+function renderSparkline() {
+  const container = document.getElementById('sparkline');
+  container.innerHTML = '';
+  const values = [12, 28, 18, 45, 34, 56, 42, 67, 55, 78, 62, 88, 71, 95, 82];
+  const max = Math.max(...values);
+  values.forEach(v => {
+    const bar = document.createElement('div');
+    bar.className = 'sparkline-bar';
+    bar.style.height = `${(v / max) * 100}%`;
+    container.appendChild(bar);
+  });
+}
+
+// === ANALYTICS STREAM ===
+function startAnalyticsStream() {
+  const container = document.getElementById('stream-items');
+  container.innerHTML = '';
+
+  const typeMap = {
+    click: { cls: 'event-click', label: 'click' },
+    view: { cls: 'event-view', label: 'pageview' },
+    convert: { cls: 'event-convert', label: 'convert' },
+    exit: { cls: 'event-exit', label: 'exit' },
+  };
+
+  let idx = 0;
+  function emitEvent() {
+    const e = ANALYTICS_EVENTS[idx % ANALYTICS_EVENTS.length];
+    idx++;
+    eventCount++;
+    document.getElementById('event-count').textContent = `${eventCount} events`;
+
+    const t = typeMap[e.event];
+    const item = document.createElement('div');
+    item.className = 'stream-item';
+    item.innerHTML = `
+      <div class="stream-event ${t.cls}"></div>
+      <span class="stream-user">${e.user}</span>
+      <span class="stream-action">${e.action}</span>
+      <span class="stream-time">just now</span>
+    `;
+    container.insertBefore(item, container.firstChild);
+
+    // Keep max 8 items
+    while (container.children.length > 8) {
+      container.removeChild(container.lastChild);
+    }
+
+    log('ANALYTICS', 'analytics', `${t.label.toUpperCase()} · ${e.user} → ${e.action}`);
+  }
+
+  // Initial burst
+  emitEvent();
+  setTimeout(emitEvent, 800);
+  setTimeout(emitEvent, 1600);
+
+  // Ongoing stream
+  analyticsInterval = setInterval(() => {
+    if (Math.random() > 0.3) emitEvent();
+  }, 2400);
+}
+
+// === RESET ===
+function resetAll() {
+  if (analyticsInterval) clearInterval(analyticsInterval);
+  running = false;
+  eventCount = 0;
+  startTime = null;
+
+  ['audience', 'content', 'experiment', 'journey'].forEach(a => setAgentStatus(a, 'idle'));
+  [1,2,3,4,5,6].forEach(n => {
+    const el = document.getElementById(`step${n}`);
+    el.className = 'progress-step';
+    el.querySelector('.step-num').textContent = n;
+  });
+
+  ['m-segments','m-profiles','m-assets','m-variants','m-tests','m-confidence','m-journeys','m-channels']
+    .forEach(id => document.getElementById(id).textContent = '—');
+
+  document.getElementById('segment-list').innerHTML = '<div style="color: var(--muted); font-size: 11px; padding: 20px 0; text-align: center;">Awaiting Audience Agent...</div>';
+  document.getElementById('content-queue').innerHTML = '<div style="color: var(--muted); font-size: 11px; padding: 20px 0; text-align: center;">Awaiting Content Agent...</div>';
+  document.getElementById('tag-area').innerHTML = '';
+  document.getElementById('stream-items').innerHTML = '<div style="color: var(--muted); font-size: 11px; padding: 20px 0; text-align: center;">Awaiting journey activation...</div>';
+  document.getElementById('channel-chart').innerHTML = '<div style="color: var(--muted); font-size: 11px;">Initializing analytics...</div>';
+  document.getElementById('conversion-chart').innerHTML = '<div style="color: var(--muted); font-size: 11px;">Initializing analytics...</div>';
+  document.getElementById('sparkline').innerHTML = '';
+  document.getElementById('event-count').textContent = '0 events';
+  document.getElementById('seg-count').textContent = '—';
+  document.getElementById('content-count').textContent = '—';
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('runInfo').textContent = 'Click to trigger the full autonomous agent pipeline';
+
+  const body = document.getElementById('terminal-body');
+  body.innerHTML = `<div class="log-line" style="opacity:1">
+    <span class="log-time">00:00:00</span>
+    <span class="log-tag system">[SYSTEM]</span>
+    <span class="log-msg">AEP Agent Orchestrator reset. Agents standby.</span>
+  </div>`;
+}
+</script>
+</body>
+</html>
