@@ -1,5 +1,4 @@
 services:
-  # ==================== APPLICATION ====================
   app:
     build:
       context: .
@@ -10,7 +9,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 5000
-      MONGO_URI: mongodb://mongodb:27017/aep-orchestrator
+      MONGO_URI: mongodb://admin:admin123@mongodb:27017/aep-orchestrator?authSource=admin
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:29092
       LOG_LEVEL: debug
@@ -25,9 +24,7 @@ services:
       - aep-network
     restart: unless-stopped
     volumes:
-      - ./server.js:/app/server.js:ro
-      - ./scripts:/app/scripts:ro
-
+      - .:/app
   # ==================== MONGODB DATABASE ====================
   mongodb:
     image: mongo:6.0

@@ -24,7 +24,6 @@ const ADOBE_API_KEY = process.env.ADOBE_API_KEY;
 const ADOBE_ORG_ID = process.env.ADOBE_ORG_ID;
 const ADOBE_TECH_ACCOUNT = process.env.ADOBE_TECH_ACCOUNT;
 const ADOBE_PRIVATE_KEY = process.env.ADOBE_PRIVATE_KEY;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 // ==================== DATABASE CONNECTION ====================
 mongoose.connect(MONGO_URI, {
@@ -247,51 +246,65 @@ class AdobeAPIClient {
 
 const adobeClient = new AdobeAPIClient();
 
-// ==================== HELPER: CLAUDE AI INTEGRATION ====================
-async function callClaudeAPI(prompt, context = {}) {
+// ==================== HELPER: GROQ AI INTEGRATION ====================
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+async function callGroqAPI(prompt, context = {}) {
+  if (!GROQ_API_KEY) {
+    console.warn('⚠️  GROQ_API_KEY not set — skipping AI call');
+    return null;
+  }
   try {
     const response = await axios.post(
-      'https://api.anthropic.com/v1/messages',
+      'https://api.groq.com/openai/v1/chat/completions',
       {
-        model: 'claude-opus-4-6',
+        model: 'llama-3.3-70b-versatile',
         max_tokens: 1000,
         messages: [
+          {
+            role: 'system',
+            content: `You are an AI agent for AEP (Adobe Experience Platform) orchestration.
+${JSON.stringify(context, null, 2)}
+Provide actionable insights and recommendations in JSON format when possible.`,
+          },
           {
             role: 'user',
             content: prompt,
           },
         ],
-        system: `You are an AI agent for AEP (Adobe Experience Platform) orchestration. 
-${JSON.stringify(context, null, 2)}
-Provide actionable insights and recommendations in JSON format when possible.`,
       },
       {
         headers: {
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
         },
       }
     );
 
-    return response.data.content[0].text;
+    return response.data.choices[0].message.content;
   } catch (error) {
-    console.error('Claude API error:', error.message);
+    console.error('Groq API error:', error.response?.data || error.message);
     return null;
   }
 }
 
 // ==================== AGENT: AUDIENCE ====================
 class AudienceAgent {
-  async ingestFromKafka(topic) {
+  async ingestFromKafka(topic = 'audience-data') {
     try {
-      await kafkaConsumer.subscribe({ topic });
+      await kafkaConsumer.subscribe({ topic, fromBeginning: true });
       await kafkaConsumer.run({
-        eachMessage: async ({ topic, partition, message }) => {
-          const data = JSON.parse(message.value.toString());
-          await this.processAudienceData(data);
+        eachMessage: async ({ message }) => {
+          try {
+            const data = JSON.parse(message.value.toString());
+            console.log('📨 Kafka message received:', data);
+            await this.processAudienceData(data);
+          } catch (err) {
+            console.error('❌ Error processing Kafka message:', err);
+          }
         },
       });
+      console.log(`✅ AudienceAgent listening on topic: ${topic}`);
     } catch (error) {
       console.error('Kafka ingestion error:', error);
     }
@@ -299,16 +312,15 @@ class AudienceAgent {
 
   async processAudienceData(rawData) {
     try {
-      // Infer user category from raw data
-      const ageGroup = this.inferAgeGroup(rawData);
-      const userCategory = `${ageGroup}yrs`;
+      // Infer segment from age — Groq generates it dynamically if age > 45
+      const segment = await this.inferSegmentWithAI(rawData.age);
 
       // Create audience segment
       const audience = new Audience({
         audienceId: `aud_${Date.now()}`,
-        name: `Audience-${userCategory}`,
-        segment: rawData.segment || 'default',
-        userCategory,
+        name: rawData.name || `Audience-${segment}`,
+        segment,
+        userCategory: segment,
         attributes: rawData,
         createdFrom: 'kafka_topic',
         status: 'draft',
@@ -316,10 +328,10 @@ class AudienceAgent {
 
       await audience.save();
 
-      // Call Claude for segment optimization
-      const optimization = await callClaudeAPI(
+      // Call Groq for segment optimization
+      const optimization = await callGroqAPI(
         `Analyze this audience data and suggest segment optimizations: ${JSON.stringify(rawData)}`,
-        { audienceId: audience.audienceId, userCategory }
+        { audienceId: audience.audienceId, segment }
       );
 
       // Push to Redis cache
@@ -332,7 +344,7 @@ class AudienceAgent {
       // Publish to Adobe AEP
       const adobeSegment = await adobeClient.createSegment({
         name: audience.name,
-        description: `Segment for ${userCategory}`,
+        description: `Segment for ${segment}`,
         predicate: this.buildSegmentPredicate(rawData),
       });
 
@@ -348,19 +360,30 @@ class AudienceAgent {
     }
   }
 
-  inferAgeGroup(data) {
-    const age = data.age || data.userAge;
-    if (!age) return '0-2';
+  inferSegment(age) {
+    if (!age || isNaN(age)) return '0-10';
+    if (age <= 10) return '0-10';
+    if (age <= 19) return '11-19';
+    if (age <= 30) return '20-30';
+    if (age <= 45) return '31-45';
+    if (age <= 60) return '46-60';
+    if (age <= 75) return '61-75';
+    return '76-100';
+  }
 
-    if (age <= 2) return '0-2';
-    if (age <= 10) return '8-10';
-    if (age <= 17) return '11-17';
-    return '18+';
+  async inferSegmentWithAI(age) {
+    // Always use deterministic segment — no AI for basic age ranges
+    return this.inferSegment(age);
   }
 
   buildSegmentPredicate(data) {
-    // Build XDM-compatible predicate for AEP
-    return `(profile.attributes.age >= ${data.minAge || 0}) AND (profile.attributes.age <= ${data.maxAge || 100})`;
+    const segment = this.inferSegment(data.age);
+    if (!segment) {
+      // age > 45, use open-ended predicate
+      return `(profile.attributes.age >= 46)`;
+    }
+    const [min, max] = segment.replace('+', '-999').split('-').map(Number);
+    return `(profile.attributes.age >= ${min}) AND (profile.attributes.age <= ${max})`;
   }
 
   async getAudience(audienceId) {
@@ -556,7 +579,7 @@ class JourneyAgent {
         Suggest the best content sequencing and personalization strategy.
       `;
 
-      const recommendation = await callClaudeAPI(prompt);
+      const recommendation = await callGroqAPI(prompt);
       return recommendation;
     } catch (error) {
       console.error('Personalization error:', error);
@@ -620,7 +643,7 @@ class AnalyticsAgent {
 
       // Generate AI recommendation based on feedback
       if (rating <= 2) {
-        const recommendation = await callClaudeAPI(
+        const recommendation = await callGroqAPI(
           `User gave low rating (${rating}/5) on content. Feedback: ${comment}. Recommend alternative content or improvement.`
         );
 
@@ -954,12 +977,21 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ==================== SERVER STARTUP ====================
+// ==================== KAFKA CONSUMER ====================
+
+
+
+// ==================== SERVER START ====================
 const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   try {
     await kafkaProducer.connect();
+    console.log("✅ Kafka Producer connected");
+
+    // Wire Kafka → AudienceAgent → processAudienceData → audiences collection
+    await audienceAgent.ingestFromKafka('audience-data');
+
     app.listen(PORT, () => {
       console.log(`\n╔════════════════════════════════════════╗`);
       console.log(`║  AEP Agent Orchestrator - v1.0.0      ║`);
@@ -967,8 +999,9 @@ async function startServer() {
       console.log(`║  MongoDB: ${MONGO_URI.substring(0, 35)}... ║`);
       console.log(`╚════════════════════════════════════════╝\n`);
     });
+
   } catch (error) {
-    console.error('Failed to start server:', error);
+    console.error("❌ Failed to start server:", error);
     process.exit(1);
   }
 }
