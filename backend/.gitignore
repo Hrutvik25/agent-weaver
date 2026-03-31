@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Environment variables — never commit real keys
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Docker
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
