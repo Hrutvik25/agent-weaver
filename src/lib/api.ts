@@ -34,6 +34,7 @@ export default api;
 
 export const audienceApi = {
   list: () => api.get("/audiences"),
+  summary: () => api.get("/audiences/summary"),
   get: (id: string) => api.get(`/audiences/${id}`),
   create: (data: unknown) => api.post("/audiences", data),
 };
@@ -46,6 +47,7 @@ export const contentApi = {
 };
 
 export const journeyApi = {
+  list: () => api.get("/journeys"),
   get: (id: string) => api.get(`/journeys/${id}`),
   create: (data: unknown) => api.post("/journeys", data),
   activate: (id: string) => api.post(`/journeys/${id}/activate`),
@@ -58,7 +60,12 @@ export const analyticsApi = {
   feedback: (data: unknown) => api.post("/analytics/feedback", data),
 };
 
+export const statsApi = {
+  get: () => api.get("/stats"),
+};
+
 export const orchestratorApi = {
   run: (data: unknown) => api.post("/orchestrate", data),
+  batch: (events: unknown[]) => api.post("/orchestrate/batch", { events }),
   health: () => api.get("/health"),
 };

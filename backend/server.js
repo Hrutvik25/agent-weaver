@@ -288,6 +288,7 @@ class AnalyticsAgent {
             });
 
             console.log(`📤 [AnalyticsAgent] Sent to audience-segments: ${event.userId} → ${segmentResult.segment}`);
+            broadcastLog('ANALYTICS', 'analytics', `📤 Segment decision: ${event.userId} → ${segmentResult.segment} (score: ${segmentResult.score})`);
 
           } catch (err) {
             console.error('❌ Error processing analytics event:', err.message);
@@ -446,6 +447,7 @@ class AudienceAgent {
             }
 
             console.log('📥 [AudienceAgent] Received segment:', data.userId, '→', data.segment);
+            broadcastLog('AUDIENCE', 'audience', `📥 Segment received: ${data.userId} → ${data.segment}`);
             await this.upsertSegment(data.userId, { segment: data.segment, score: data.score }, data.sourceEvent || {});
 
             // Produce to content-recommendations so ContentAgent can react
@@ -458,6 +460,7 @@ class AudienceAgent {
               }) }],
             });
             console.log(`📤 [AudienceAgent] Sent to content-recommendations: ${data.userId} → ${data.segment}`);
+            broadcastLog('AUDIENCE', 'audience', `📤 Sent to content-recommendations: ${data.userId}`);
 
           } catch (err) {
             console.error('❌ Error processing segment message:', err.message);
@@ -496,6 +499,7 @@ class AudienceAgent {
       await redisClient.setEx(`audience:${userId}`, 3600, JSON.stringify(audience));
 
       console.log(`✓ Audience upserted: ${userId} → ${segment} (score: ${score})`);
+      broadcastLog('AUDIENCE', 'audience', `✓ Upserted: ${userId} → ${segment} (score: ${score})`);
       return audience;
     } catch (error) {
       console.error('Audience upsert error:', error);
@@ -538,6 +542,7 @@ class ContentAgent {
             }
 
             console.log('📥 [ContentAgent] Received recommendation:', data.userId, '→', data.segment);
+            broadcastLog('CONTENT', 'content', `📥 Content recommendation: ${data.userId} → ${data.segment}`);
 
             // Find published content matching this segment
             const content = await this.listContentBySegment(data.segment);
@@ -554,6 +559,7 @@ class ContentAgent {
             });
 
             console.log(`📤 [ContentAgent] Sent to journey-triggers: ${data.userId}, ${content.length} content items`);
+            broadcastLog('CONTENT', 'content', `📤 Journey trigger sent: ${data.userId} — ${content.length} content items`);
           } catch (err) {
             console.error('❌ [ContentAgent] Error:', err.message);
           }
@@ -646,6 +652,7 @@ class JourneyAgent {
             }
 
             console.log('📥 [JourneyAgent] Received trigger:', data.userId, '→', data.segment);
+            broadcastLog('JOURNEY', 'journey', `📥 Journey trigger: ${data.userId} → ${data.segment}`);
 
             // Auto-create a personalized journey for this user's segment
             const journey = await this.createJourney({
@@ -666,6 +673,8 @@ class JourneyAgent {
             );
 
             console.log(`✓ [JourneyAgent] Journey created: ${journey.journeyId} | AI: ${recommendation}`);
+            broadcastLog('JOURNEY', 'journey', `✓ Journey created: ${journey.journeyId}`);
+            if (recommendation) broadcastLog('JOURNEY', 'journey', `🤖 AI: ${recommendation.slice(0, 120)}`);
 
           } catch (err) {
             console.error('❌ [JourneyAgent] Error:', err.message);
@@ -749,7 +758,33 @@ class JourneyAgent {
 const journeyAgent = new JourneyAgent();
 
 
-// ==================== API ENDPOINTS ====================
+// ==================== SSE: REAL-TIME LOG BROADCASTER ====================
+const sseClients = new Set();
+
+function broadcastLog(tag, tagClass, message) {
+  const payload = JSON.stringify({
+    time: new Date().toTimeString().slice(0, 8),
+    tag: `[${tag}]`,
+    tagClass,
+    message,
+  });
+  sseClients.forEach(client => {
+    try { client.write(`data: ${payload}\n\n`); } catch (_) { sseClients.delete(client); }
+  });
+}
+
+app.get('/api/logs/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders();
+
+  sseClients.add(res);
+  broadcastLog('SYSTEM', 'system', 'SSE client connected — live logs active.');
+
+  req.on('close', () => sseClients.delete(res));
+});
 
 // Health check
 app.get('/health', (req, res) => {
@@ -779,6 +814,28 @@ app.get('/api/audiences/summary', async (req, res) => {
   try {
     const summary = await audienceAgent.getSegmentSummary();
     res.json({ success: true, data: summary });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get overall stats for dashboard
+app.get('/api/stats', async (req, res) => {
+  try {
+    const totalAudiences = await Audience.countDocuments();
+    const totalJourneys = await Journey.countDocuments();
+    const totalEvents = await AnalyticsEvent.countDocuments();
+    const segmentBreakdown = await audienceAgent.getSegmentSummary();
+
+    res.json({
+      success: true,
+      data: {
+        totalUsers: totalAudiences,
+        totalJourneys,
+        totalEvents,
+        segments: segmentBreakdown,
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -855,6 +912,15 @@ app.post('/api/journeys/:journeyId/activate', async (req, res) => {
   try {
     const journey = await journeyAgent.activateJourney(req.params.journeyId);
     res.json({ success: true, data: journey });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/journeys', async (req, res) => {
+  try {
+    const journeys = await Journey.find().sort({ createdAt: -1 }).limit(20);
+    res.json({ success: true, data: journeys });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -941,6 +1007,7 @@ app.post('/api/orchestrate', async (req, res) => {
         messages: [{ key: analyticsEvent.userId, value: JSON.stringify(analyticsEvent) }],
       });
       console.log(`📤 [Orchestrate] Event published → analytics-events: ${analyticsEvent.userId}`);
+      broadcastLog('ORCHESTRATOR', 'orchestrator', `📤 Event published → analytics-events: ${analyticsEvent.userId}`);
       result.steps.push({ name: 'event_published', userId: analyticsEvent.userId, topic: 'analytics-events' });
     }
 
@@ -960,7 +1027,37 @@ app.post('/api/orchestrate', async (req, res) => {
   }
 });
 
-// ==================== ERROR HANDLER ====================
+// ==================== BATCH ORCHESTRATOR ENDPOINT ====================
+// Send multiple analytics events at once
+app.post('/api/orchestrate/batch', async (req, res) => {
+  try {
+    const { events } = req.body;
+
+    if (!Array.isArray(events) || events.length === 0) {
+      return res.status(400).json({ error: 'events must be a non-empty array' });
+    }
+
+    const results = [];
+    for (const analyticsEvent of events) {
+      if (!analyticsEvent.userId || !analyticsEvent.event) {
+        results.push({ userId: analyticsEvent.userId, status: 'skipped', reason: 'missing userId or event' });
+        continue;
+      }
+      await kafkaProducer.send({
+        topic: 'analytics-events',
+        messages: [{ key: analyticsEvent.userId, value: JSON.stringify(analyticsEvent) }],
+      });
+      console.log(`📤 [Batch] Event published → analytics-events: ${analyticsEvent.userId}`);
+      results.push({ userId: analyticsEvent.userId, status: 'published', topic: 'analytics-events' });
+    }
+
+    res.json({ success: true, data: { total: events.length, results } });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal Server Error', message: err.message });
