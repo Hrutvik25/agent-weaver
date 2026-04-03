@@ -7,6 +7,7 @@ import SegmentsPanel from '@/components/aep/SegmentsPanel';
 import ContentPanel from '@/components/aep/ContentPanel';
 import AnalyticsStreamPanel from '@/components/aep/AnalyticsStreamPanel';
 import AnalyticsCharts from '@/components/aep/AnalyticsCharts';
+import MCPMetricsPanel from '@/components/aep/MCPMetricsPanel';
 import Terminal from '@/components/aep/Terminal';
 import Footer from '@/components/aep/Footer';
 import { orchestratorApi, audienceApi, journeyApi, statsApi } from '@/lib/api';
@@ -279,6 +280,7 @@ const Index = () => {
           <AnalyticsStreamPanel events={streamEvents} />
         </div>
         <AnalyticsCharts channelData={channelData} conversionData={conversionData} sparkline={sparkline} />
+        <MCPMetricsPanel />
         <div className="flex items-center gap-3 text-[10px] tracking-[0.25em] uppercase text-muted-foreground mb-5">
           Orchestrator Console
           <span className="flex-1 h-px bg-border" />
