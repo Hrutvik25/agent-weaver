@@ -69,3 +69,14 @@ export const orchestratorApi = {
   batch: (events: unknown[]) => api.post("/orchestrate/batch", { events }),
   health: () => api.get("/health"),
 };
+
+export const mcpApi = {
+  metrics: (window: '1h' | '24h' | '7d' = '24h') =>
+    api.get(`/mcp/metrics?window=${window}`),
+  audit: (params?: { agentId?: string; tool?: string; limit?: number }) =>
+    api.get('/mcp/audit', { params }),
+  getPolicy: (agentId: string) =>
+    api.get(`/mcp/policy/${agentId}`),
+  updatePolicy: (agentId: string, policy: Record<string, unknown>) =>
+    api.put(`/mcp/policy/${agentId}`, policy),
+};
