@@ -11,6 +11,9 @@ const { Kafka } = require('kafkajs');
 const axios = require('axios');
 require('dotenv').config();
 const cors = require('cors');
+const MCPClient = require('./gateway/mcpClient');
+const { MCPPolicyError } = require('./gateway/errors');
+const MCP_GATEWAY_URL = process.env.MCP_GATEWAY_URL || 'http://localhost:5001';
 
 const app = express();
 app.use(express.json());
@@ -236,6 +239,30 @@ function analyzeBehavior(event) {
  * Saves the raw event, then passes result to Orchestrator → AudienceAgent.
  */
 class AnalyticsAgent {
+  constructor() {
+    const agentId = 'analytics';
+    this.mcpClient = new MCPClient({
+      gatewayUrl: MCP_GATEWAY_URL,
+      agentId,
+      jwtSecret: process.env['AGENT_JWT_SECRET_' + agentId.toUpperCase()] || process.env.AGENT_JWT_SECRET || 'dev-secret-change-in-production',
+    });
+  }
+
+  async enrichWithMCP(userId, segment) {
+    try {
+      const leads = await this.mcpClient.invoke('salesforce.getLeads', { filter: { segment, status: 'open' }, limit: 5 });
+      broadcastLog('ANALYTICS', 'analytics', `🔗 MCP enrichment: ${leads?.length ?? 0} leads for segment ${segment}`);
+      return leads;
+    } catch (err) {
+      if (err instanceof MCPPolicyError) {
+        console.warn(`⚠️  [AnalyticsAgent] MCP policy denied: ${err.message}`);
+      } else {
+        console.warn(`⚠️  [AnalyticsAgent] MCP enrichment failed: ${err.message}`);
+      }
+      return null;
+    }
+  }
+
   async startKafkaConsumer() {
     try {
       await kafkaConsumer.subscribe({ topic: 'analytics-events', fromBeginning: true });
@@ -427,6 +454,30 @@ const analyticsAgent = new AnalyticsAgent();
  * Output: MongoDB audiences document
  */
 class AudienceAgent {
+  constructor() {
+    const agentId = 'audience';
+    this.mcpClient = new MCPClient({
+      gatewayUrl: MCP_GATEWAY_URL,
+      agentId,
+      jwtSecret: process.env['AGENT_JWT_SECRET_' + agentId.toUpperCase()] || process.env.AGENT_JWT_SECRET || 'dev-secret-change-in-production',
+    });
+  }
+
+  async enrichSegmentWithCRM(userId, segment) {
+    try {
+      const leads = await this.mcpClient.invoke('salesforce.getLeads', { filter: { segment, status: 'open' }, limit: 10 });
+      broadcastLog('AUDIENCE', 'audience', `🔗 MCP CRM enrichment: ${leads?.length ?? 0} leads for ${userId}`);
+      return leads;
+    } catch (err) {
+      if (err instanceof MCPPolicyError) {
+        console.warn(`⚠️  [AudienceAgent] MCP policy denied: ${err.message}`);
+      } else {
+        console.warn(`⚠️  [AudienceAgent] MCP enrichment failed: ${err.message}`);
+      }
+      return null;
+    }
+  }
+
   async startKafkaConsumer() {
     try {
       await kafkaAudienceConsumer.subscribe({ topic: 'audience-segments', fromBeginning: true });
@@ -528,6 +579,30 @@ const audienceAgent = new AudienceAgent();
 
 // ==================== AGENT: CONTENT ====================
 class ContentAgent {
+  constructor() {
+    const agentId = 'content';
+    this.mcpClient = new MCPClient({
+      gatewayUrl: MCP_GATEWAY_URL,
+      agentId,
+      jwtSecret: process.env['AGENT_JWT_SECRET_' + agentId.toUpperCase()] || process.env.AGENT_JWT_SECRET || 'dev-secret-change-in-production',
+    });
+  }
+
+  async fetchSupportContext(segment) {
+    try {
+      const cases = await this.mcpClient.invoke('salesforce.getCases', { status: 'Working', limit: 5 });
+      broadcastLog('CONTENT', 'content', `🔗 MCP support context: ${cases?.length ?? 0} cases for segment ${segment}`);
+      return cases;
+    } catch (err) {
+      if (err instanceof MCPPolicyError) {
+        console.warn(`⚠️  [ContentAgent] MCP policy denied: ${err.message}`);
+      } else {
+        console.warn(`⚠️  [ContentAgent] MCP support context failed: ${err.message}`);
+      }
+      return null;
+    }
+  }
+
   async startKafkaConsumer() {
     try {
       await kafkaContentConsumer.subscribe({ topic: 'content-recommendations', fromBeginning: true });
@@ -638,6 +713,44 @@ const contentAgent = new ContentAgent();
 
 // ==================== AGENT: JOURNEY ====================
 class JourneyAgent {
+  constructor() {
+    const agentId = 'journey';
+    this.mcpClient = new MCPClient({
+      gatewayUrl: MCP_GATEWAY_URL,
+      agentId,
+      jwtSecret: process.env['AGENT_JWT_SECRET_' + agentId.toUpperCase()] || process.env.AGENT_JWT_SECRET || 'dev-secret-change-in-production',
+    });
+  }
+
+  async fetchPipelineContext(segment) {
+    let opportunities = null;
+    let changeRequests = null;
+
+    try {
+      opportunities = await this.mcpClient.invoke('salesforce.getOpportunities', { stage: 'Prospecting', limit: 5 });
+      broadcastLog('JOURNEY', 'journey', `🔗 MCP pipeline: ${opportunities?.length ?? 0} opportunities for segment ${segment}`);
+    } catch (err) {
+      if (err instanceof MCPPolicyError) {
+        console.warn(`⚠️  [JourneyAgent] MCP policy denied (opportunities): ${err.message}`);
+      } else {
+        console.warn(`⚠️  [JourneyAgent] MCP opportunities failed: ${err.message}`);
+      }
+    }
+
+    try {
+      changeRequests = await this.mcpClient.invoke('servicenow.getChangeRequests', { state: 'scheduled', limit: 5 });
+      broadcastLog('JOURNEY', 'journey', `🔗 MCP pipeline: ${changeRequests?.length ?? 0} change requests for segment ${segment}`);
+    } catch (err) {
+      if (err instanceof MCPPolicyError) {
+        console.warn(`⚠️  [JourneyAgent] MCP policy denied (changeRequests): ${err.message}`);
+      } else {
+        console.warn(`⚠️  [JourneyAgent] MCP change requests failed: ${err.message}`);
+      }
+    }
+
+    return { opportunities, changeRequests };
+  }
+
   async startKafkaConsumer() {
     try {
       await kafkaJourneyConsumer.subscribe({ topic: 'journey-triggers', fromBeginning: true });
