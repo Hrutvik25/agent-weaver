@@ -1,0 +1,23 @@
+{
+  "name": "mcp-agent-gateway",
+  "version": "1.0.0",
+  "description": "MCP Agent Gateway — centralized secure proxy for MCP tool calls",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "minimatch": "^9.0.4",
+    "mongoose": "^8.0.3",
+    "redis": "^4.6.12",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "fast-check": "^3.15.0"
+  }
+}
