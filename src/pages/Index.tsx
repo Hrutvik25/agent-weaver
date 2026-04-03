@@ -63,6 +63,13 @@ const Index = () => {
     try {
       const res = await audienceApi.list();
       const data = res.data?.data || [];
+      
+      // Ensure data is an array
+      if (!Array.isArray(data)) {
+        console.error('Expected array from audiences API, got:', data);
+        return;
+      }
+      
       const segmentMap: Record<string, number> = {};
       data.forEach((a: { segment: string }) => {
         segmentMap[a.segment] = (segmentMap[a.segment] || 0) + 1;
@@ -103,6 +110,12 @@ const Index = () => {
     try {
       const res = await journeyApi.list();
       const data = res.data?.data || [];
+      
+      // Ensure data is an array
+      if (!Array.isArray(data)) {
+        console.error('Expected array from journeys API, got:', data);
+        return;
+      }
 
       setContentItems(data.slice(0, 4).map((j: { audienceSegment: string; journeyId: string; status: string }) => ({
         type: j.audienceSegment?.replace(/_/g, ' ') || 'Segment',
@@ -139,7 +152,7 @@ const Index = () => {
 
   // Connect to SSE stream for real-time backend logs
   useEffect(() => {
-    const es = new EventSource('http://localhost:5000/api/logs/stream');
+    const es = new EventSource('/api/logs/stream');
     es.onmessage = (e) => {
       try {
         const log = JSON.parse(e.data);

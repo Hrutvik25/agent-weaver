@@ -126,6 +126,12 @@ const TOOLS = {
   },
 };
 
+// ── Health ────────────────────────────────────────────────────────────────────
+
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'healthy', service: 'mcp-servicenow', timestamp: new Date() });
+});
+
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 app.post('/tools/call', async (req, res) => {

@@ -111,10 +111,25 @@ async function getMetrics(redisClient, window = '1h') {
   const costUsd = totalCostMicro / 1000000;
   const avgLatencyMs = totalCalls > 0 ? totalLatencyMs / totalCalls : 0;
 
+  // Convert objects to arrays for frontend compatibility
+  const perAgentArray = Object.entries(perAgent).map(([agentId, metrics]) => ({
+    agentId,
+    calls: metrics.calls,
+    errors: metrics.errors,
+    cost: metrics.totalCostUsd,
+    avgLatency: metrics.calls > 0 ? metrics.totalLatencyMs / metrics.calls : 0,
+  }));
+
+  const perToolArray = Object.entries(perTool).map(([tool, metrics]) => ({
+    tool,
+    calls: metrics.calls,
+    errors: metrics.errors,
+  }));
+
   return {
-    perAgent,
-    perTool,
-    totals: { calls: totalCalls, costUsd, avgLatencyMs },
+    perAgent: perAgentArray,
+    perTool: perToolArray,
+    totals: { calls: totalCalls, cost: costUsd, avgLatency: avgLatencyMs },
   };
 }
 

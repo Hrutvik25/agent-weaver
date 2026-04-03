@@ -15,6 +15,7 @@ RUN npm ci --only=production && \
 # Copy application code
 COPY server.js ./
 COPY scripts ./scripts
+COPY gateway ./gateway
 
 # ==================== RUNTIME STAGE ====================
 FROM node:18-alpine
@@ -35,6 +36,7 @@ COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
 # Copy application code
 COPY --chown=nodejs:nodejs server.js ./
 COPY --chown=nodejs:nodejs scripts ./scripts
+COPY --chown=nodejs:nodejs gateway ./gateway
 COPY --chown=nodejs:nodejs .env.example ./.env.example
 
 # Switch to non-root user

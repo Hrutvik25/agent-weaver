@@ -47,6 +47,7 @@ const MCPMetricsPanel = () => {
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async (w: TimeWindow) => {
     try {
@@ -54,10 +55,30 @@ const MCPMetricsPanel = () => {
         mcpApi.metrics(w),
         mcpApi.audit({ limit: 10 }),
       ]);
-      setMetrics(metricsRes.data?.data ?? metricsRes.data ?? null);
-      setAudit(auditRes.data?.data ?? auditRes.data ?? []);
+      
+      const metricsData = metricsRes.data?.data ?? metricsRes.data ?? null;
+      const auditData = auditRes.data?.data ?? auditRes.data ?? [];
+      
+      // Ensure arrays are valid
+      if (metricsData && !Array.isArray(metricsData.perAgent)) {
+        console.error('Expected perAgent to be array, got:', metricsData.perAgent);
+        metricsData.perAgent = [];
+      }
+      if (metricsData && !Array.isArray(metricsData.perTool)) {
+        console.error('Expected perTool to be array, got:', metricsData.perTool);
+        metricsData.perTool = [];
+      }
+      if (!Array.isArray(auditData)) {
+        console.error('Expected audit to be array, got:', auditData);
+        setAudit([]);
+      } else {
+        setAudit(auditData);
+      }
+      
+      setMetrics(metricsData);
+      setError(null);
     } catch (_) {
-      // silent — backend may not be running
+      setError('Gateway unavailable — metrics will appear once the MCP gateway is running.');
     } finally {
       setLoading(false);
     }
@@ -101,6 +122,10 @@ const MCPMetricsPanel = () => {
 
       {loading ? (
         <div className="text-[11px] text-muted-foreground">Loading...</div>
+      ) : error ? (
+        <div className="text-[11px] text-yellow-400 bg-[rgba(255,200,50,0.08)] border border-[rgba(255,200,50,0.2)] rounded-sm p-3">
+          {error}
+        </div>
       ) : (
         <>
           {/* Summary row */}

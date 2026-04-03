@@ -249,15 +249,20 @@ class AnalyticsAgent {
   }
 
   async enrichWithMCP(userId, segment) {
+    console.log(`[AnalyticsAgent] Calling MCP enrichWithMCP for ${userId}, segment: ${segment}`);
     try {
       const leads = await this.mcpClient.invoke('salesforce.getLeads', { filter: { segment, status: 'open' }, limit: 5 });
+      console.log(`[AnalyticsAgent] MCP response:`, leads);
       broadcastLog('ANALYTICS', 'analytics', `🔗 MCP enrichment: ${leads?.length ?? 0} leads for segment ${segment}`);
       return leads;
     } catch (err) {
+      console.error(`[AnalyticsAgent] MCP enrichment error:`, err);
       if (err instanceof MCPPolicyError) {
         console.warn(`⚠️  [AnalyticsAgent] MCP policy denied: ${err.message}`);
+        broadcastLog('ANALYTICS', 'analytics', `⚠️ MCP policy denied: ${err.message}`);
       } else {
         console.warn(`⚠️  [AnalyticsAgent] MCP enrichment failed: ${err.message}`);
+        broadcastLog('ANALYTICS', 'analytics', `⚠️ MCP enrichment failed: ${err.message}`);
       }
       return null;
     }
@@ -300,6 +305,10 @@ class AnalyticsAgent {
 
             // Orchestrator decision — produce result to audience-segments topic
             const segmentResult = analyzeBehavior(event);
+
+            // MCP enrichment — enrich with Salesforce leads (non-blocking)
+            await this.enrichWithMCP(event.userId, segmentResult.segment);
+
             const segmentData = {
               userId:       event.userId,
               segment:      segmentResult.segment,
@@ -464,15 +473,20 @@ class AudienceAgent {
   }
 
   async enrichSegmentWithCRM(userId, segment) {
+    console.log(`[AudienceAgent] Calling MCP enrichSegmentWithCRM for ${userId}, segment: ${segment}`);
     try {
       const leads = await this.mcpClient.invoke('salesforce.getLeads', { filter: { segment, status: 'open' }, limit: 10 });
+      console.log(`[AudienceAgent] MCP response:`, leads);
       broadcastLog('AUDIENCE', 'audience', `🔗 MCP CRM enrichment: ${leads?.length ?? 0} leads for ${userId}`);
       return leads;
     } catch (err) {
+      console.error(`[AudienceAgent] MCP enrichment error:`, err);
       if (err instanceof MCPPolicyError) {
         console.warn(`⚠️  [AudienceAgent] MCP policy denied: ${err.message}`);
+        broadcastLog('AUDIENCE', 'audience', `⚠️ MCP policy denied: ${err.message}`);
       } else {
         console.warn(`⚠️  [AudienceAgent] MCP enrichment failed: ${err.message}`);
+        broadcastLog('AUDIENCE', 'audience', `⚠️ MCP enrichment failed: ${err.message}`);
       }
       return null;
     }
@@ -500,6 +514,9 @@ class AudienceAgent {
             console.log('📥 [AudienceAgent] Received segment:', data.userId, '→', data.segment);
             broadcastLog('AUDIENCE', 'audience', `📥 Segment received: ${data.userId} → ${data.segment}`);
             await this.upsertSegment(data.userId, { segment: data.segment, score: data.score }, data.sourceEvent || {});
+
+            // MCP enrichment — enrich segment with Salesforce CRM data (non-blocking)
+            await this.enrichSegmentWithCRM(data.userId, data.segment);
 
             // Produce to content-recommendations so ContentAgent can react
             await kafkaProducer.send({
@@ -618,6 +635,9 @@ class ContentAgent {
 
             console.log('📥 [ContentAgent] Received recommendation:', data.userId, '→', data.segment);
             broadcastLog('CONTENT', 'content', `📥 Content recommendation: ${data.userId} → ${data.segment}`);
+
+            // MCP enrichment — fetch support context from Salesforce (non-blocking)
+            await this.fetchSupportContext(data.segment);
 
             // Find published content matching this segment
             const content = await this.listContentBySegment(data.segment);
@@ -767,6 +787,9 @@ class JourneyAgent {
             console.log('📥 [JourneyAgent] Received trigger:', data.userId, '→', data.segment);
             broadcastLog('JOURNEY', 'journey', `📥 Journey trigger: ${data.userId} → ${data.segment}`);
 
+            // MCP enrichment — fetch pipeline context from Salesforce + ServiceNow (non-blocking)
+            await this.fetchPipelineContext(data.segment);
+
             // Auto-create a personalized journey for this user's segment
             const journey = await this.createJourney({
               name:                        `Auto-Journey: ${data.segment} - ${data.userId}`,
@@ -901,6 +924,20 @@ app.get('/api/logs/stream', (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date(),
+    pipeline: 'analytics-events → AnalyticsAgent → Orchestrator → AudienceAgent → MongoDB',
+    services: {
+      mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+      redis:   'connected',
+      kafka:   'connected',
+    },
+  });
+});
+
+// Health check (API version)
+app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date(),

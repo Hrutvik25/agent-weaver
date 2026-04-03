@@ -11,6 +11,7 @@ services:
     depends_on:
       - frontend
       - backend
+      - gateway
     networks:
       - aep-network
     restart: unless-stopped
@@ -38,7 +39,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5000
-      MONGO_URI: mongodb://mongodb:27017/aep-orchestrator
+      MONGO_URI: mongodb://admin:admin123@mongodb:27017/aep-orchestrator?authSource=admin
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:29092
     env_file:
@@ -49,7 +50,7 @@ services:
       redis:
         condition: service_healthy
       kafka:
-        condition: service_healthy
+        condition: service_started
     networks:
       - aep-network
     restart: unless-stopped
@@ -104,11 +105,6 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     networks:
       - aep-network
-    healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     restart: unless-stopped
 
   # ==================== KAFKA ====================
@@ -116,8 +112,7 @@ services:
     image: confluentinc/cp-kafka:7.5.0
     container_name: aep-kafka
     depends_on:
-      zookeeper:
-        condition: service_healthy
+      - zookeeper
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -129,45 +124,90 @@ services:
     networks:
       - aep-network
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
-      start_period: 30s
+      start_period: 40s
     restart: unless-stopped
 
-  # ==================== OPTIONAL: MONITORING UIs ====================
+  # ==================== MCP GATEWAY ====================
+  # ==================== MCP GATEWAY ====================
+  gateway:
+    build:
+      context: ./backend/gateway
+    container_name: aep-mcp-gateway
+    ports:
+      - "5001:5001"
+    environment:
+     NODE_ENV: production
+     PORT: 5001
+     MONGO_URI: mongodb://admin:admin123@mongodb:27017/aep-orchestrator?authSource=admin
+     REDIS_URL: redis://redis:6379
+     MCP_GATEWAY_URL: http://gateway:5001
+     SALESFORCE_MCP_URL: mcp-salesforce:5002
+     SERVICENOW_MCP_URL: mcp-servicenow:5003
+
+    # 🔥 ADD JWT SECRETS HERE (INSIDE SAME BLOCK)
+     AGENT_JWT_SECRET_ANALYTICS: changeme-analytics
+     AGENT_JWT_SECRET_AUDIENCE: changeme-audience
+     AGENT_JWT_SECRET_CONTENT: changeme-content
+     AGENT_JWT_SECRET_JOURNEY: changeme-journey
+
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - aep-network
+    restart: unless-stopped
+
+  # ==================== MCP SALESFORCE ====================
+  mcp-salesforce:
+    build: ./backend/mcp-servers/salesforce
+    container_name: aep-mcp-salesforce
+    expose:
+      - "5002"
+    networks:
+      - aep-network
+    restart: unless-stopped
+
+  # ==================== MCP SERVICENOW ====================
+  mcp-servicenow:
+    build: ./backend/mcp-servers/servicenow
+    container_name: aep-mcp-servicenow
+    expose:
+      - "5003"
+    networks:
+      - aep-network
+    restart: unless-stopped
+
+  # ==================== KAFKA UI ====================
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: aep-kafka-ui
     ports:
       - "8082:8080"
     environment:
-      KAFKA_CLUSTERS_0_NAME: aep-cluster
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
     depends_on:
       - kafka
     networks:
       - aep-network
-    restart: unless-stopped
 
+  # ==================== MONGO EXPRESS ====================
   mongo-express:
-    image: mongo-express:latest
+    image: mongo-express
     container_name: aep-mongo-express
     ports:
       - "8081:8081"
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
-      ME_CONFIG_MONGODB_ADMINPASSWORD: admin123
       ME_CONFIG_MONGODB_URL: mongodb://admin:admin123@mongodb:27017/
-      ME_CONFIG_BASICAUTH: "true"
-      ME_CONFIG_BASICAUTH_USERNAME: admin
-      ME_CONFIG_BASICAUTH_PASSWORD: admin123
     depends_on:
       - mongodb
     networks:
       - aep-network
-    restart: unless-stopped
 
 networks:
   aep-network:
@@ -177,10 +217,3 @@ volumes:
   mongodb_data:
   mongodb_config:
   redis_data:
-
-# ==================== SERVICE REFERENCE ====================
-# App (via Nginx):    http://localhost
-# API (via Nginx):    http://localhost/api/
-# Health Check:       http://localhost/health
-# Kafka UI:           http://localhost:8082
-# MongoDB Express:    http://localhost:8081  (admin/admin123)
